@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 9bca001fad05bbe4a895a459bc8ca845
+guid: ac10001740c74a34ba9bb636f7449978
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
@@ -8,7 +8,7 @@ ModelImporter:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
       name: Material_0
-    second: {fileID: 2100000, guid: f7ebd1b36ab36ec4c80e89beeb2ed02f, type: 2}
+    second: {fileID: 2100000, guid: b6fbfe63fea7e2f4d932787c275ba2be, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -302,13 +302,13 @@ ModelImporter:
         length: 0
         modified: 0
     skeleton:
-    - name: Stonewall_Gaze_biped_Character_output (1)(Clone)
+    - name: Meshy_AI_Stonewall_Gaze_biped_Character_output(Clone)
       parentName: 
       position: {x: 0, y: 0, z: 0}
       rotation: {x: 0, y: 0, z: 0, w: 1}
       scale: {x: 1, y: 1, z: 1}
     - name: Armature
-      parentName: Stonewall_Gaze_biped_Character_output (1)(Clone)
+      parentName: Meshy_AI_Stonewall_Gaze_biped_Character_output(Clone)
       position: {x: -0, y: 0, z: 0}
       rotation: {x: -0.7071068, y: 0, z: -0, w: 0.7071068}
       scale: {x: 100, y: 100, z: 100}
@@ -453,7 +453,7 @@ ModelImporter:
       rotation: {x: -0.019818692, y: -0.0960245, z: 0.99404293, w: -0.047595154}
       scale: {x: 0.9999987, y: 0.9999997, z: 0.99999535}
     - name: Mesh_0
-      parentName: Stonewall_Gaze_biped_Character_output (1)(Clone)
+      parentName: Meshy_AI_Stonewall_Gaze_biped_Character_output(Clone)
       position: {x: -0, y: 0, z: 0}
       rotation: {x: -0.7071068, y: 0, z: -0, w: 0.7071068}
       scale: {x: 100, y: 100, z: 100}

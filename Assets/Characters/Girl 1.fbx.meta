@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: b7079fced80a0b7448b048a459d2b66c
+guid: d6562c5ab351bd042980ce43f739d726
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
@@ -196,7 +196,8 @@ ModelImporter:
     - name: mixamorig:LeftForeArm
       parentName: mixamorig:LeftArm
       position: {x: 3.231037e-11, y: 0.24203573, z: 1.7166471e-10}
-      rotation: {x: 0.000000059318644, y: 0.000088365014, z: -0.0000000042281463, w: 1}
+      rotation: {x: 0.000000059318644, y: 0.000088365014, z: -0.0000000042281463,
+        w: 1}
       scale: {x: 1, y: 1, z: 1}
     - name: mixamorig:LeftHand
       parentName: mixamorig:LeftForeArm

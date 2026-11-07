@@ -1,0 +1,308 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+[RequireComponent(typeof(CharacterController))]
+public class PlayerController : MonoBehaviour
+{
+    [Header("Speeds")]
+    public float walkSpeed = 3f;
+    public float runSpeed = 6f;
+    public float crawlSpeed = 1.2f;
+
+    [Header("Jump & Gravity")]
+    [Range(0.1f, 1f)]
+    public float jumpHeight = 0.3f;
+    public float gravity = -20f;
+
+    [Header("Direction")]
+    [Tooltip("ON = A moves right and D moves left. Turn OFF for normal A=left, D=right.")]
+    public bool swapLeftRight = true;
+    [Tooltip("Tick this if W moves you backward")]
+    public bool invertForwardBack = false;
+
+    [Header("Camera Basics")]
+    [Tooltip("Leave empty to use the Main Camera automatically")]
+    public Transform cameraTransform;
+    public bool isFirstPerson = true;
+    public Key switchCameraKey = Key.V;
+    public bool autoEyeHeight = true;
+    public float standingEyeHeight = 1.6f;
+    public float crawlEyeHeight = 0.7f;
+    public Vector3 firstPersonOffset = new Vector3(0f, 0f, 0.1f);
+    [Tooltip("X = shoulder side, Y = height, Z = distance behind")]
+    public Vector3 thirdPersonOffset = new Vector3(0.4f, 0.2f, -1.8f);
+    public float cameraSmoothSpeed = 10f;
+    public float viewSwitchSpeed = 3f;
+    public float cameraCollisionPadding = 0.2f;
+    [Tooltip("Set to 180 if the camera looks backward")]
+    public float cameraYawOffset = 0f;
+    [Tooltip("Turn OFF if another script controls the camera rotation")]
+    public bool controlCameraRotation = true;
+
+    [Header("Camera Effects")]
+    public bool headBob = true;
+    public float walkBobAmount = 0.025f;
+    public float runBobAmount = 0.05f;
+    public float crawlBobAmount = 0.012f;
+    public float bobSpeedWalk = 7f;
+    public float bobSpeedRun = 11f;
+    public float strafeTilt = 2f;
+    public float landingDipAmount = 0.015f;
+    public float thirdPersonPitch = 8f;
+    public float runPullBack = 0.5f;
+
+    [Header("Field Of View")]
+    public float normalFOV = 65f;
+    public float runFOV = 75f;
+    public float thirdPersonFOVBonus = 3f;
+    public float fovSmoothSpeed = 6f;
+
+    [Header("Crawl")]
+    public float crawlHeight = 1f;
+
+    [HideInInspector] public bool inventoryOpen = false;
+
+    public bool IsRunning { get; private set; }
+    public bool IsCrawling { get; private set; }
+    public bool IsGrounded { get; private set; }
+    public Vector2 MoveInput { get; private set; }
+
+    private CharacterController controller;
+    private Camera cam;
+    private Vector3 velocity;
+
+    private float standingHeight;
+    private Vector3 standingCenter;
+    private float currentEyeHeight;
+
+    // camera effect state
+    private float viewBlend;            // 0 = first person, 1 = third person
+    private Vector3 tppLocalOffset;     // smoothed third person offset (yaw space)
+    private float bobTimer;
+    private float bobAmountCurrent;
+    private float tiltCurrent;
+    private float landOffset;
+    private float airVelY;
+    private float pullBackCurrent;
+
+    private void Awake()
+    {
+        controller = GetComponent<CharacterController>();
+        standingHeight = controller.height;
+        standingCenter = controller.center;
+        currentEyeHeight = autoEyeHeight ? standingHeight * 0.9f : standingEyeHeight;
+
+        if (cameraTransform == null && Camera.main != null)
+            cameraTransform = Camera.main.transform;
+
+        if (cameraTransform == null)
+        {
+            Debug.LogError("PlayerController: No camera found. Tag your camera as MainCamera or assign Camera Transform.");
+            return;
+        }
+
+        cam = cameraTransform.GetComponent<Camera>();
+        if (cam != null) cam.fieldOfView = normalFOV;
+
+        cameraTransform.SetParent(null, true);
+
+        viewBlend = isFirstPerson ? 0f : 1f;
+        tppLocalOffset = thirdPersonOffset;
+    }
+
+    // Flat forward direction that ignores any tilt of the Player root
+    private Vector3 GetHeading()
+    {
+        Vector3 h = Vector3.ProjectOnPlane(transform.forward, Vector3.up);
+        if (h.sqrMagnitude < 0.01f)
+            h = Vector3.ProjectOnPlane(transform.up, Vector3.up);
+        if (h.sqrMagnitude < 0.01f)
+            h = Vector3.forward;
+        return h.normalized;
+    }
+
+    private void Update()
+    {
+        var kb = Keyboard.current;
+        if (kb == null) return;
+
+        // remember falling speed so we can add a landing dip
+        bool wasGrounded = IsGrounded;
+        if (!wasGrounded) airVelY = velocity.y;
+
+        IsGrounded = controller.isGrounded;
+        if (IsGrounded && !wasGrounded && airVelY < -4f)
+            landOffset = -Mathf.Clamp(-airVelY * landingDipAmount, 0f, 0.25f);
+
+        if (IsGrounded && velocity.y < 0f)
+            velocity.y = -2f;
+
+        Vector2 input = Vector2.zero;
+        IsRunning = false;
+
+        if (!inventoryOpen)
+        {
+            float fwd = invertForwardBack ? -1f : 1f;
+            if (kb.wKey.isPressed) input.y += fwd;
+            if (kb.sKey.isPressed) input.y -= fwd;
+
+            float side = swapLeftRight ? -1f : 1f;
+            if (kb.aKey.isPressed) input.x += side;
+            if (kb.dKey.isPressed) input.x -= side;
+
+            if (input.sqrMagnitude > 1f) input.Normalize();
+
+            bool ctrl = kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed;
+            HandleCrawl(ctrl);
+
+            bool shift = kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
+            IsRunning = shift && !IsCrawling && input.sqrMagnitude > 0.01f;
+
+            if (kb[switchCameraKey].wasPressedThisFrame)
+                isFirstPerson = !isFirstPerson;
+
+            if (kb.spaceKey.wasPressedThisFrame && IsGrounded && !IsCrawling)
+                velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+        }
+        else
+        {
+            HandleCrawl(false);
+        }
+
+        MoveInput = input;
+
+        velocity.y += gravity * Time.deltaTime;
+
+        float speed = walkSpeed;
+        if (IsCrawling) speed = crawlSpeed;
+        else if (IsRunning) speed = runSpeed;
+
+        // Horizontal-only movement: W/S can never push the player up or down
+        Vector3 heading = GetHeading();
+        Vector3 right = Vector3.Cross(Vector3.up, heading);
+        Vector3 horizontal = (right * input.x + heading * input.y) * speed;
+
+        controller.Move((horizontal + Vector3.up * velocity.y) * Time.deltaTime);
+    }
+
+    private void LateUpdate()
+    {
+        UpdateCamera();
+    }
+
+    private void HandleCrawl(bool wantCrawl)
+    {
+        if (wantCrawl)
+            IsCrawling = true;
+        else if (IsCrawling && CanStandUp())
+            IsCrawling = false;
+
+        float targetHeight = IsCrawling ? crawlHeight : standingHeight;
+        float newHeight = Mathf.MoveTowards(controller.height, targetHeight, 6f * Time.deltaTime);
+
+        controller.height = newHeight;
+        controller.center = new Vector3(
+            standingCenter.x,
+            standingCenter.y - (standingHeight - newHeight) * 0.5f,
+            standingCenter.z);
+
+        float targetEye;
+        if (autoEyeHeight)
+            targetEye = IsCrawling ? crawlHeight * 0.85f : standingHeight * 0.9f;
+        else
+            targetEye = IsCrawling ? crawlEyeHeight : standingEyeHeight;
+
+        currentEyeHeight = Mathf.Lerp(currentEyeHeight, targetEye, 10f * Time.deltaTime);
+    }
+
+    private bool CanStandUp()
+    {
+        float checkDistance = standingHeight - controller.height + 0.1f;
+        Vector3 start = transform.position + controller.center + Vector3.up * (controller.height * 0.5f - controller.radius);
+        return !Physics.SphereCast(start, controller.radius * 0.9f, Vector3.up, out _,
+                                   checkDistance, ~0, QueryTriggerInteraction.Ignore);
+    }
+
+    private void UpdateCamera()
+    {
+        if (cameraTransform == null) return;
+
+        float dt = Time.deltaTime;
+
+        // ---------- smooth blend between first and third person ----------
+        float blendTarget = isFirstPerson ? 0f : 1f;
+        viewBlend = Mathf.MoveTowards(viewBlend, blendTarget, viewSwitchSpeed * dt);
+        float blend = Mathf.SmoothStep(0f, 1f, viewBlend);
+
+        // ---------- base eye position (from the feet) ----------
+        Quaternion yawRot = Quaternion.LookRotation(GetHeading(), Vector3.up) * Quaternion.Euler(0f, cameraYawOffset, 0f);
+        float feetY = transform.position.y + controller.center.y - controller.height * 0.5f;
+        Vector3 eyeWorld = new Vector3(transform.position.x, feetY + currentEyeHeight, transform.position.z);
+
+        // ---------- head bob (mostly first person) ----------
+        bool moving = MoveInput.sqrMagnitude > 0.01f && IsGrounded;
+        float targetBob = 0f;
+        float bobSpeed = bobSpeedWalk;
+
+        if (moving && headBob)
+        {
+            if (IsCrawling) { targetBob = crawlBobAmount; bobSpeed = bobSpeedWalk * 0.6f; }
+            else if (IsRunning) { targetBob = runBobAmount; bobSpeed = bobSpeedRun; }
+            else { targetBob = walkBobAmount; bobSpeed = bobSpeedWalk; }
+            bobTimer += dt * bobSpeed;
+        }
+
+        bobAmountCurrent = Mathf.Lerp(bobAmountCurrent, targetBob, 8f * dt);
+        Vector3 bobOffset = new Vector3(
+            Mathf.Cos(bobTimer) * bobAmountCurrent * 0.5f,
+            Mathf.Sin(bobTimer * 2f) * bobAmountCurrent,
+            0f) * (1f - blend * 0.7f);
+
+        // ---------- landing dip ----------
+        landOffset = Mathf.Lerp(landOffset, 0f, 8f * dt);
+        Vector3 landVec = new Vector3(0f, landOffset * (1f - blend * 0.5f), 0f);
+
+        // ---------- run pull back (third person) ----------
+        pullBackCurrent = Mathf.Lerp(pullBackCurrent, IsRunning ? runPullBack : 0f, 4f * dt);
+
+        // ---------- third person target with wall collision ----------
+        Vector3 tppTarget = thirdPersonOffset + new Vector3(0f, 0f, -pullBackCurrent);
+        Vector3 desiredWorld = eyeWorld + yawRot * tppTarget;
+        Vector3 dir = desiredWorld - eyeWorld;
+        float dist = dir.magnitude;
+
+        if (dist > 0.01f &&
+            Physics.Raycast(eyeWorld, dir.normalized, out RaycastHit hit,
+                            dist + cameraCollisionPadding, ~0, QueryTriggerInteraction.Ignore))
+        {
+            if (hit.collider.transform != transform && !hit.collider.transform.IsChildOf(transform))
+                desiredWorld = hit.point - dir.normalized * cameraCollisionPadding;
+        }
+
+        Vector3 desiredLocal = Quaternion.Inverse(yawRot) * (desiredWorld - eyeWorld);
+        tppLocalOffset = Vector3.Lerp(tppLocalOffset, desiredLocal, cameraSmoothSpeed * dt);
+
+        // ---------- final position ----------
+        Vector3 finalLocal = Vector3.Lerp(firstPersonOffset, tppLocalOffset, blend);
+        cameraTransform.position = eyeWorld + yawRot * (finalLocal + bobOffset + landVec);
+
+        // ---------- rotation (strafe tilt in FPP, slight look-down in TPP) ----------
+        if (controlCameraRotation)
+        {
+            float targetTilt = -MoveInput.x * strafeTilt;
+            tiltCurrent = Mathf.Lerp(tiltCurrent, targetTilt, 8f * dt);
+
+            float pitch = thirdPersonPitch * blend;
+            float roll = tiltCurrent * (1f - blend);
+            cameraTransform.rotation = yawRot * Quaternion.Euler(pitch, 0f, roll);
+        }
+
+        // ---------- field of view ----------
+        if (cam != null)
+        {
+            float targetFOV = IsRunning ? runFOV : normalFOV;
+            targetFOV += thirdPersonFOVBonus * blend;
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFOV, fovSmoothSpeed * dt);
+        }
+    }
+}
