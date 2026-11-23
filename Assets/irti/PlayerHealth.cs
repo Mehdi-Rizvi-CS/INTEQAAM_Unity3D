@@ -34,6 +34,14 @@ public class PlayerHealth : MonoBehaviour
         }
     }
 
+    private void Update()
+{
+    if (Input.GetKeyDown(KeyCode.H))
+    {
+        TakeDamage(100f);
+    }
+}
+
     public void TakeDamage(float damage)
     {
         if (isDead)
