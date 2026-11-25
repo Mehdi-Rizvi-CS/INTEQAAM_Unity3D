@@ -67,6 +67,6 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "INTEQAAM_Unity3D.slnx",
+    "dotnet.defaultSolution": "First_Project.slnx",
     "dotnet.enableWorkspaceBasedDevelopment": false
 }
